@@ -35,6 +35,12 @@ enum Commands {
 }
 
 fn main() {
+    // Plugins are not standalone, iocc sets IOCC_HOST when it starts them
+    if std::env::var_os("IOCC_HOST").is_none() {
+        eprintln!("iocc-powmon is a plugin and must be run through iocc: iocc powmon <command>");
+        exit(1);
+    }
+
     let cli = Cli::parse();
     let config = read_config();
     if config.is_verbose() {
@@ -48,7 +54,7 @@ fn main() {
     ) {
         Ok(x) => x,
         Err(err) => {
-            println!("Error: {err}, check USB connection");
+            eprintln!("Error: {err}, check USB connection");
             exit(1);
         }
     };
@@ -63,7 +69,8 @@ fn main() {
                 }
             }
             Err(x) => {
-                println!("Error: {}", x);
+                eprintln!("Error: {}", x);
+                exit(1);
             }
         },
         Some(Commands::Voltage) => {

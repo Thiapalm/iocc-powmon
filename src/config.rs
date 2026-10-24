@@ -39,17 +39,9 @@ pub struct Powmon {
     chip: Chipsetup,
 }
 
-/**
- * Reads and parses configuration file (config.yaml) into Powmon structure
- * The configuratin file is shared among all plugins
- */
-pub fn read_config() -> Powmon {
-    let config_content = fs::read_to_string("config.yaml").unwrap_or_default();
-
-    let parsed: Result<RootConfig, _> = serde_yaml::from_str(&config_content);
-    match parsed {
-        Ok(cfg) => cfg.powmon,
-        Err(_) => Powmon {
+impl Default for Powmon {
+    fn default() -> Self {
+        Powmon {
             address: HexU8(0x4A),
             verbose: false,
             i2c_speed_hz: 400_000,
@@ -60,9 +52,40 @@ pub fn read_config() -> Powmon {
                 vbusct: InaVbusct::_1_1_ms,
                 vscht: InaVshct::_1_1_ms,
                 average: InaAverage::_16,
-                maxcurrent: 2.0,
+                maxcurrent: 5.0,
             },
-        },
+        }
+    }
+}
+
+/**
+ * Reads and parses the powmon section of the config file shared with iocc.
+ * The file path is provided by iocc through the IOCC_CONFIG environment variable.
+ * Missing or invalid files fall back to the default configuration.
+ */
+pub fn read_config() -> Powmon {
+    let Some(path) = std::env::var_os("IOCC_CONFIG") else {
+        eprintln!("Warning: IOCC_CONFIG not set; using default configuration");
+        return Powmon::default();
+    };
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "Warning: cannot read {}: {e}; using default configuration",
+                std::path::Path::new(&path).display()
+            );
+            return Powmon::default();
+        }
+    };
+
+    match serde_yaml::from_str::<RootConfig>(&content) {
+        Ok(cfg) => cfg.powmon,
+        Err(e) => {
+            eprintln!("Warning: invalid powmon configuration: {e}; using default configuration");
+            Powmon::default()
+        }
     }
 }
 
