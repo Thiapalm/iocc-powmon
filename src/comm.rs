@@ -72,37 +72,3 @@ pub fn read_device(
     dev.write_read_address(address, &[register], &mut read)?;
     Ok(read)
 }
-
-/**
- * Wrapper to read u16 from any given register
- * Inputs:
- *   dev - mcp2221 handle
- *   address - Device address in 7bit format
- *   register - Register that will receive the data
- *
- * Output:
- *   2Byte array containing the data
- */
-pub fn read_register_u16(dev: &mut mcp2221::Handle, address: u8, reg: u8) -> Result<u16, Error> {
-    let data = read_device(dev, address, reg, 2)?;
-    Ok(u16::from_be_bytes([data[0], data[1]]))
-}
-
-/**
- * Wrapper to write u16 into any given register
- * Inputs:
- *   dev - mcp2221 handle
- *   address - Device address in 7bit format
- *   register - Register that will receive the data
- *   value - 16bit value to write
- *
- * Output:
- */
-pub fn write_register_u16(
-    dev: &mut mcp2221::Handle,
-    address: u8,
-    reg: u8,
-    value: u16,
-) -> Result<(), Error> {
-    write_device(dev, address, reg, &value.to_be_bytes())
-}

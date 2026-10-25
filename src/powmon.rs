@@ -1,4 +1,4 @@
-use crate::comm::*;
+use crate::bus::Bus;
 use crate::tools::*;
 use serde::Deserialize;
 
@@ -253,12 +253,12 @@ impl Chipsetup {
 *
 * @return Error if unable to read from the device or the die id or manufacturer id is invalid.
 */
-pub fn verify_hardware(dev: &mut mcp2221::Handle, address: u8) -> Result<(), Error> {
-    let die = read_register_u16(dev, address, Register::DieId as u8)?;
+pub fn verify_hardware(bus: &mut Bus, address: u8) -> Result<(), Error> {
+    let die = bus.read_u16(address, Register::DieId as u8)?;
     if DIE_ID != die {
         return Err(Error::InvalidDie);
     }
-    let manufacturer = read_register_u16(dev, address, Register::Manufacturer as u8)?;
+    let manufacturer = bus.read_u16(address, Register::Manufacturer as u8)?;
     if MANUFACTURER != manufacturer {
         return Err(Error::InvalidManufacturer);
     }
@@ -272,12 +272,8 @@ pub fn verify_hardware(dev: &mut mcp2221::Handle, address: u8) -> Result<(), Err
  * @param address The address of the device
  * @param setup The setup to use
  */
-pub fn config_hardware(
-    dev: &mut mcp2221::Handle,
-    address: u8,
-    setup: Chipsetup,
-) -> Result<(), Error> {
-    let mut configuration = read_configuration(dev, address)?;
+pub fn config_hardware(bus: &mut Bus, address: u8, setup: Chipsetup) -> Result<(), Error> {
+    let mut configuration = read_configuration(bus, address)?;
     // println!("Bits          : 0bFEDCBA9876543210");
     // println!("Config        : 0b{:16b}", configuration.1);
     configuration &= 0xFFF8;
@@ -296,7 +292,7 @@ pub fn config_hardware(
     configuration |= (setup.average as u16) << 9;
     // println!("average       : 0b{:16b}", (DEFAULT_AVERAGE as u16) << 9);
     // println!("Config Average: 0b{:16b} 3 bits (C-B-A)", configuration.1);
-    write_register_u16(dev, address, Register::Configuration as u8, configuration)
+    bus.write_u16(address, Register::Configuration as u8, configuration)
 }
 
 /**
@@ -307,8 +303,8 @@ pub fn config_hardware(
  *
  * @return The voltage in volts.
  */
-pub fn read_volts(dev: &mut mcp2221::Handle, address: u8) -> Result<f64, Error> {
-    let raw = read_register_u16(dev, address, Register::BusVoltage as u8)?;
+pub fn read_volts(bus: &mut Bus, address: u8) -> Result<f64, Error> {
+    let raw = bus.read_u16(address, Register::BusVoltage as u8)?;
     Ok(bus_volts(raw))
 }
 
@@ -324,8 +320,8 @@ pub fn bus_volts(raw: u16) -> f64 {
  *
  * @return The shunt voltage in Volts.
  */
-pub fn read_shunt(dev: &mut mcp2221::Handle, address: u8) -> Result<f64, Error> {
-    let raw = read_register_u16(dev, address, Register::ShuntVoltage as u8)?;
+pub fn read_shunt(bus: &mut Bus, address: u8) -> Result<f64, Error> {
+    let raw = bus.read_u16(address, Register::ShuntVoltage as u8)?;
     Ok(shunt_volts(raw as i16))
 }
 
@@ -342,8 +338,8 @@ pub fn shunt_volts(raw: i16) -> f64 {
  *
  * @return The current in Amps.
  */
-pub fn read_amps(dev: &mut mcp2221::Handle, address: u8, current_lsb: f64) -> Result<f64, Error> {
-    let raw = read_register_u16(dev, address, Register::Current as u8)?;
+pub fn read_amps(bus: &mut Bus, address: u8, current_lsb: f64) -> Result<f64, Error> {
+    let raw = bus.read_u16(address, Register::Current as u8)?;
     Ok(current_amps(raw as i16, current_lsb))
 }
 
@@ -360,8 +356,8 @@ pub fn current_amps(raw: i16, current_lsb: f64) -> f64 {
  *
  * @return The power in Watts.
  */
-pub fn read_power(dev: &mut mcp2221::Handle, address: u8, current_lsb: f64) -> Result<f64, Error> {
-    let raw = read_register_u16(dev, address, Register::Power as u8)?;
+pub fn read_power(bus: &mut Bus, address: u8, current_lsb: f64) -> Result<f64, Error> {
+    let raw = bus.read_u16(address, Register::Power as u8)?;
     Ok(power_watts(raw, current_lsb))
 }
 
@@ -377,8 +373,8 @@ pub fn power_watts(raw: u16, current_lsb: f64) -> f64 {
  *
  * @return The device configuration register.
  */
-pub fn read_configuration(dev: &mut mcp2221::Handle, address: u8) -> Result<u16, Error> {
-    read_register_u16(dev, address, Register::Configuration as u8)
+pub fn read_configuration(bus: &mut Bus, address: u8) -> Result<u16, Error> {
+    bus.read_u16(address, Register::Configuration as u8)
 }
 
 /**
@@ -387,10 +383,10 @@ pub fn read_configuration(dev: &mut mcp2221::Handle, address: u8) -> Result<u16,
  * @param dev The device handler to reset
  * @param address The address of the device
  */
-pub fn reset(dev: &mut mcp2221::Handle, address: u8) -> Result<(), Error> {
-    let mut configuration = read_configuration(dev, address)?;
+pub fn reset(bus: &mut Bus, address: u8) -> Result<(), Error> {
+    let mut configuration = read_configuration(bus, address)?;
     configuration |= 1 << 15;
-    write_register_u16(dev, address, Register::Configuration as u8, configuration)
+    bus.write_u16(address, Register::Configuration as u8, configuration)
 }
 
 /**
@@ -400,13 +396,9 @@ pub fn reset(dev: &mut mcp2221::Handle, address: u8) -> Result<(), Error> {
  * @param address The address of the device
  * @param expect_max_curr The expected maximum current in Amps
  */
-pub fn calibrate(
-    dev: &mut mcp2221::Handle,
-    address: u8,
-    expect_max_curr: f64,
-) -> Result<f64, Error> {
+pub fn calibrate(bus: &mut Bus, address: u8, expect_max_curr: f64) -> Result<f64, Error> {
     let (cal, current_lsb) = calibration(expect_max_curr)?;
-    write_register_u16(dev, address, Register::Calibration as u8, cal)?;
+    bus.write_u16(address, Register::Calibration as u8, cal)?;
     Ok(current_lsb)
 }
 

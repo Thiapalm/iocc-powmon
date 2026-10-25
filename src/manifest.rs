@@ -7,13 +7,13 @@ pub const MANIFEST_FLAG: &str = "--iocc-manifest";
 pub const JSON: &str = r#"{
   "protocol": 1,
   "title": "Power monitor (INA226)",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "INA226 voltage, current and power monitor through the MCP2221",
   "views": [
-    {"id": "readings", "label": "Readings", "kind": "metrics", "refresh_ms": 1000,
-     "command": ["read", "--json"]},
-    {"id": "status", "label": "Status", "kind": "table", "refresh_ms": 5000,
-     "command": ["status", "--json"]}
+    {"id": "live", "label": "Live readings", "kind": "metrics", "stream": true,
+     "device": "shared", "command": ["watch", "--json", "--interval-ms", "200"]},
+    {"id": "status", "label": "Status", "kind": "table", "device": "shared",
+     "refresh_ms": 5000, "command": ["status", "--json"]}
   ],
   "actions": [
     {"id": "mode", "label": "Set mode", "description": "change the operating mode",
@@ -21,7 +21,7 @@ pub const JSON: &str = r#"{
                "options": ["PowerDown", "ShuntVoltageTriggered", "BusVoltageTriggered",
                            "ShuntAndBusTriggered", "PowerDown2", "ShuntVoltageContinuous",
                            "BusVoltageContinuous", "ShuntAndBusContinuous"]}],
-     "command": ["mode", "{mode}"]},
+     "device": "shared", "command": ["mode", "{mode}"]},
     {"id": "calibrate", "label": "Calibrate", "description": "set the maximum expected current",
      "args": [{"name": "max", "label": "Max current (A)", "type": "number", "default": "5.0"}],
      "command": ["calibrate", "--max", "{max}"]},

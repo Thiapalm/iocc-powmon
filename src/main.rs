@@ -1,7 +1,8 @@
 use clap::{CommandFactory, Parser, Subcommand};
 
+mod bus;
+use bus::Bus;
 mod comm;
-use comm::*;
 
 mod powmon;
 use powmon::*;
@@ -36,6 +37,15 @@ enum Commands {
     Power,
     /// Read Shunt voltage
     Shunt,
+    /// Keep printing readings until interrupted (used by the TUI live panel)
+    Watch {
+        /// Milliseconds between samples
+        #[arg(long, default_value_t = 200)]
+        interval_ms: u64,
+        /// Print one JSON metrics object per line
+        #[arg(long)]
+        json: bool,
+    },
     /// Read voltage, current, power and shunt voltage (configures and calibrates first)
     Read {
         /// Print JSON metrics (used by the iocc TUI)
@@ -89,23 +99,22 @@ fn main() {
     }
 }
 
-fn open_device(config: &Powmon) -> Result<mcp2221::Handle, Error> {
-    start_device(
+fn open_device(config: &Powmon) -> Result<Bus, Error> {
+    Bus::open(
         config.get_speed(),
         config.is_reset_on_open(),
         config.get_timeout(),
     )
-    .map_err(|err| Error::InvalidValue(format!("{err}, check USB connection")))
 }
 
 /**
  * Prepares the chip (configuration + calibration) and returns the current LSB
  */
-fn setup(dev: &mut mcp2221::Handle, config: &Powmon) -> Result<f64, Error> {
+fn setup(bus: &mut Bus, config: &Powmon) -> Result<f64, Error> {
     let address = config.get_address();
-    verify_hardware(dev, address)?;
-    config_hardware(dev, address, config.get_chip_config())?;
-    calibrate(dev, address, config.get_chip_config().maxcurrent)
+    verify_hardware(bus, address)?;
+    config_hardware(bus, address, config.get_chip_config())?;
+    calibrate(bus, address, config.get_chip_config().maxcurrent)
 }
 
 fn run(cli: &Cli, config: &Powmon) -> Result<(), Error> {
@@ -169,6 +178,21 @@ fn run(cli: &Cli, config: &Powmon) -> Result<(), Error> {
                 println!("Current     : {amps:.3} A");
                 println!("Power       : {watts:.3} W");
                 println!("Shunt       : {shunt:.6} V");
+            }
+        }
+        Commands::Watch { interval_ms, json } => {
+            let current_lsb = setup(&mut dev, config)?;
+            loop {
+                let volts = read_volts(&mut dev, address)?;
+                let amps = read_amps(&mut dev, address, current_lsb)?;
+                let watts = read_power(&mut dev, address, current_lsb)?;
+                let shunt = read_shunt(&mut dev, address)?;
+                if *json {
+                    println!("{}", manifest::metrics(volts, amps, watts, shunt));
+                } else {
+                    println!("{volts:.3} V  {amps:.3} A  {watts:.3} W  shunt {shunt:.6} V");
+                }
+                std::thread::sleep(std::time::Duration::from_millis((*interval_ms).max(10)));
             }
         }
         Commands::Mode { save, .. } => {
