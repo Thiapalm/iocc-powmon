@@ -7,11 +7,13 @@ pub const MANIFEST_FLAG: &str = "--iocc-manifest";
 pub const JSON: &str = r#"{
   "protocol": 1,
   "title": "Power monitor (INA226)",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "INA226 voltage, current and power monitor through the MCP2221",
   "views": [
     {"id": "live", "label": "Live readings", "kind": "metrics", "stream": true,
      "device": "shared", "command": ["watch", "--json", "--interval-ms", "200"]},
+    {"id": "graph", "label": "Current graph", "kind": "chart", "metric": "Current",
+     "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
     {"id": "status", "label": "Status", "kind": "table", "device": "shared",
      "refresh_ms": 5000, "command": ["status", "--json"]}
   ],
@@ -68,8 +70,13 @@ mod tests {
     fn manifest_is_valid_for_the_tui_protocol() {
         let value: serde_json::Value = serde_json::from_str(JSON).unwrap();
         assert_eq!(value["protocol"], 1);
-        assert_eq!(value["views"].as_array().unwrap().len(), 2);
+        assert_eq!(value["views"].as_array().unwrap().len(), 3);
         assert_eq!(value["actions"].as_array().unwrap().len(), 3);
+        let views = value["views"].as_array().unwrap();
+        let graph = views.iter().find(|v| v["id"] == "graph").unwrap();
+        assert_eq!(graph["kind"], "chart");
+        assert_eq!(graph["metric"], "Current");
+        assert_eq!(graph["device"], "shared");
     }
 
     #[test]
@@ -81,5 +88,12 @@ mod tests {
 
         let m: serde_json::Value = serde_json::from_str(&metrics(12.0, 1.0, 12.0, 0.0)).unwrap();
         assert_eq!(m["metrics"].as_array().unwrap().len(), 4);
+        assert!(
+            m["metrics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|metric| metric["name"] == "Current")
+        );
     }
 }
