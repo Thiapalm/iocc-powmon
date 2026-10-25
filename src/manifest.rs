@@ -17,7 +17,9 @@ pub fn json(chip: &Chipsetup) -> String {
         "views": [
             {"id": "live", "label": "Live readings", "kind": "metrics", "stream": true,
              "device": "shared", "command": ["watch", "--json", "--interval-ms", "200"]},
-            {"id": "graph", "label": "Signals graph", "kind": "chart", "metric": "Current",
+            {"id": "voltage", "label": "Voltage graph", "kind": "chart", "metric": "Bus voltage",
+             "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
+            {"id": "current", "label": "Current graph", "kind": "chart", "metric": "Current",
              "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
             {"id": "status", "label": "Status", "kind": "table", "device": "shared",
              "refresh_ms": 5000, "command": ["status", "--json"]}
@@ -78,13 +80,17 @@ mod tests {
     fn manifest_is_valid_for_the_tui_protocol() {
         let value: serde_json::Value = serde_json::from_str(&json(&Chipsetup::new())).unwrap();
         assert_eq!(value["protocol"], 1);
-        assert_eq!(value["views"].as_array().unwrap().len(), 3);
+        assert_eq!(value["views"].as_array().unwrap().len(), 4);
         assert_eq!(value["actions"].as_array().unwrap().len(), 3);
         let views = value["views"].as_array().unwrap();
-        let graph = views.iter().find(|v| v["id"] == "graph").unwrap();
-        assert_eq!(graph["kind"], "chart");
-        assert_eq!(graph["metric"], "Current");
-        assert_eq!(graph["device"], "shared");
+        let chart = |id: &str| {
+            let view = views.iter().find(|v| v["id"] == id).unwrap();
+            assert_eq!(view["kind"], "chart");
+            assert_eq!(view["device"], "shared");
+            view["metric"].as_str().unwrap().to_string()
+        };
+        assert_eq!(chart("voltage"), "Bus voltage");
+        assert_eq!(chart("current"), "Current");
     }
 
     #[test]
