@@ -21,6 +21,8 @@ pub fn json(chip: &Chipsetup) -> String {
              "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
             {"id": "current", "label": "Current graph", "kind": "chart", "metric": "Current",
              "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
+            {"id": "power", "label": "Power graph", "kind": "chart", "metric": "Power",
+             "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
             {"id": "status", "label": "Status", "kind": "table", "device": "shared",
              "refresh_ms": 5000, "command": ["status", "--json"]}
         ],
@@ -80,7 +82,7 @@ mod tests {
     fn manifest_is_valid_for_the_tui_protocol() {
         let value: serde_json::Value = serde_json::from_str(&json(&Chipsetup::new())).unwrap();
         assert_eq!(value["protocol"], 1);
-        assert_eq!(value["views"].as_array().unwrap().len(), 4);
+        assert_eq!(value["views"].as_array().unwrap().len(), 5);
         assert_eq!(value["actions"].as_array().unwrap().len(), 3);
         let views = value["views"].as_array().unwrap();
         let chart = |id: &str| {
@@ -91,6 +93,7 @@ mod tests {
         };
         assert_eq!(chart("voltage"), "Bus voltage");
         assert_eq!(chart("current"), "Current");
+        assert_eq!(chart("power"), "Power");
     }
 
     #[test]
