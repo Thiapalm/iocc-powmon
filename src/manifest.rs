@@ -1,35 +1,43 @@
-use crate::powmon::Chipsetup;
+use crate::powmon::{Chipsetup, InaMode};
 
 /// Flag the plugin answers to describe itself to the iocc TUI
 pub const MANIFEST_FLAG: &str = "--iocc-manifest";
 
-/// Panels and actions the `iocc tui` shows for this plugin
-pub const JSON: &str = r#"{
-  "protocol": 1,
-  "title": "Power monitor (INA226)",
-  "version": "0.4.0",
-  "description": "INA226 voltage, current and power monitor through the MCP2221",
-  "views": [
-    {"id": "live", "label": "Live readings", "kind": "metrics", "stream": true,
-     "device": "shared", "command": ["watch", "--json", "--interval-ms", "200"]},
-    {"id": "graph", "label": "Current graph", "kind": "chart", "metric": "Current",
-     "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
-    {"id": "status", "label": "Status", "kind": "table", "device": "shared",
-     "refresh_ms": 5000, "command": ["status", "--json"]}
-  ],
-  "actions": [
-    {"id": "mode", "label": "Set mode", "description": "change the operating mode",
-     "args": [{"name": "mode", "label": "Mode", "type": "choice",
-               "options": ["PowerDown", "ShuntVoltageTriggered", "BusVoltageTriggered",
-                           "ShuntAndBusTriggered", "PowerDown2", "ShuntVoltageContinuous",
-                           "BusVoltageContinuous", "ShuntAndBusContinuous"]}],
-     "device": "shared", "command": ["mode", "{mode}"]},
-    {"id": "calibrate", "label": "Calibrate", "description": "set the maximum expected current",
-     "args": [{"name": "max", "label": "Max current (A)", "type": "number", "default": "5.0"}],
-     "command": ["calibrate", "--max", "{max}"]},
-    {"id": "reset", "label": "Reset chip", "confirm": true, "command": ["reset"]}
-  ]
-}"#;
+/**
+ * Panels and actions the `iocc tui` shows for this plugin. The action defaults
+ * come from the current chip settings, so the TUI prompts with the values that
+ * are really in use (and saves them back when they change).
+ */
+pub fn json(chip: &Chipsetup) -> String {
+    serde_json::json!({
+        "protocol": 1,
+        "title": "Power monitor (INA226)",
+        "version": env!("CARGO_PKG_VERSION"),
+        "description": "INA226 voltage, current and power monitor through the MCP2221",
+        "views": [
+            {"id": "live", "label": "Live readings", "kind": "metrics", "stream": true,
+             "device": "shared", "command": ["watch", "--json", "--interval-ms", "200"]},
+            {"id": "graph", "label": "Current graph", "kind": "chart", "metric": "Current",
+             "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
+            {"id": "status", "label": "Status", "kind": "table", "device": "shared",
+             "refresh_ms": 5000, "command": ["status", "--json"]}
+        ],
+        "actions": [
+            {"id": "mode", "label": "Set mode", "description": "change and save the operating mode",
+             "args": [{"name": "mode", "label": "Mode", "type": "choice",
+                       "options": InaMode::ALL.map(InaMode::name),
+                       "default": chip.mode.name()}],
+             "device": "shared", "command": ["mode", "{mode}"]},
+            {"id": "calibrate", "label": "Calibrate",
+             "description": "set and save the maximum expected current",
+             "args": [{"name": "max", "label": "Max current (A)", "type": "number",
+                       "default": format!("{}", chip.maxcurrent)}],
+             "command": ["calibrate", "--max", "{max}"]},
+            {"id": "reset", "label": "Reset chip", "confirm": true, "command": ["reset"]}
+        ]
+    })
+    .to_string()
+}
 
 /**
  * JSON table with the decoded configuration, for the `status --json` view
@@ -68,7 +76,7 @@ mod tests {
 
     #[test]
     fn manifest_is_valid_for_the_tui_protocol() {
-        let value: serde_json::Value = serde_json::from_str(JSON).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json(&Chipsetup::new())).unwrap();
         assert_eq!(value["protocol"], 1);
         assert_eq!(value["views"].as_array().unwrap().len(), 3);
         assert_eq!(value["actions"].as_array().unwrap().len(), 3);
@@ -77,6 +85,22 @@ mod tests {
         assert_eq!(graph["kind"], "chart");
         assert_eq!(graph["metric"], "Current");
         assert_eq!(graph["device"], "shared");
+    }
+
+    #[test]
+    fn action_defaults_follow_the_saved_configuration() {
+        let chip = Chipsetup {
+            maxcurrent: 2.0,
+            mode: InaMode::ShuntAndBusContinuous,
+            ..Chipsetup::new()
+        };
+        let value: serde_json::Value = serde_json::from_str(&json(&chip)).unwrap();
+        assert_eq!(
+            value["actions"][0]["args"][0]["default"],
+            "ShuntAndBusContinuous"
+        );
+        assert_eq!(value["actions"][1]["args"][0]["default"], "2");
+        assert_eq!(value["version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

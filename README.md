@@ -42,13 +42,28 @@ Install `iocc` first. The script puts the plugin next to the `iocc` found in `PA
 | `iocc powmon read [--json]` | bus voltage, current, power and shunt voltage |
 | `iocc powmon watch [--json] [--interval-ms 200]` | keeps printing readings until interrupted |
 | `iocc powmon voltage` / `amps` / `power` / `shunt` | a single reading |
-| `iocc powmon mode <MODE> [--save]` | sets the operating mode (`--save` edits only the `mode:` line of config.yaml) |
-| `iocc powmon calibrate --max <A>` | calibrates for a maximum expected current |
+| `iocc powmon mode <MODE> [--no-save]` | sets and saves the operating mode (`--no-save` keeps it only until the chip is reconfigured) |
+| `iocc powmon calibrate --max <A> [--no-save]` | calibrates for a maximum expected current and saves it |
 | `iocc powmon reset` | resets the chip |
 
 `--json` prints the machine readable form used by the TUI (`status` as a table, `read` and `watch` as
 metrics). `watch` prints one line per sample and keeps running until interrupted; `--interval-ms`
 accepts values from 10 ms up (default 200).
+
+## Saved settings
+
+`mode` and `calibrate` write the new value to the `powmon.chip` section of `config.yaml` (only that
+line: comments, indentation and the other sections are kept), so the next command — and the TUI
+manifest — starts with it. Use `--no-save` for a temporary change:
+
+```sh
+iocc powmon calibrate --max 2      # chip calibrated for 2 A and maxcurrent: 2 saved
+iocc powmon mode ShuntAndBusContinuous   # mode applied and saved
+iocc powmon calibrate --max 5 --no-save  # this run only
+```
+
+The plugin receives the config path from iocc through `IOCC_CONFIG`; outside `iocc` it cannot read or
+save the shared file.
 
 ## TUI
 
@@ -60,6 +75,11 @@ accepts values from 10 ms up (default 200).
 All three views and the *Set mode* action declare `"device": "shared"`, so they keep sampling while
 other plugins use the bus. *Calibrate* and *Reset chip* are `exclusive`: they change or invalidate the
 chip state, so the watches pause while they run and restart afterwards.
+
+**Set mode** and **Calibrate** save their value in `config.yaml`. The manifest is generated from that
+file, so the prompts open with the value in use — calibrate for `2` once, close the TUI and the next
+`Calibrate` prompt already shows `2`. The TUI also asks for the manifest again after a successful
+action, so even in the same session the next prompt is up to date.
 
 ### Current graph
 
@@ -116,8 +136,9 @@ Without `--via-tui` they keep opening the device directly, and `--via-tui` is re
 - The current LSB used to scale readings is the one computed by the calibration, so
   `maxcurrent` in the config defines the resolution and the full scale.
 - Communication errors are reported as `Not found on address` with exit code 1 instead of panicking.
-- `read` and `watch` configure and calibrate the chip on start, so restart them after changing
-  `maxcurrent` or `mode`, or after resetting the chip.
+- `read` and `watch` configure and calibrate the chip on start, so restart them after editing
+  `config.yaml` by hand. Changing the values from the commands above or from the TUI already restarts
+  the TUI panels and is saved for the next run.
 - `watch` is the streaming form used by the TUI. It reads directly when `IOCC_SOCKET` is unset and
   through the TUI broker when the TUI sets it.
 

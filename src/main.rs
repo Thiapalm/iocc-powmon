@@ -57,24 +57,29 @@ enum Commands {
         /// PowerDown, ShuntVoltageTriggered, BusVoltageTriggered, ShuntAndBusTriggered,
         /// PowerDown2, ShuntVoltageContinuous, BusVoltageContinuous, ShuntAndBusContinuous
         mode: String,
-        /// Keep the mode after the command exits (write it to config.yaml)
+        /// Do not write the mode to config.yaml (temporary change)
         #[arg(long)]
-        save: bool,
+        no_save: bool,
     },
     /// Calibrate for a maximum expected current
     Calibrate {
         /// Maximum expected current in Amps (ex. 5.0)
         #[arg(long)]
         max: f64,
+        /// Do not write maxcurrent to config.yaml (temporary change)
+        #[arg(long)]
+        no_save: bool,
     },
     /// Reset chip
     Reset,
 }
 
 fn main() {
-    // Answered before anything else: the TUI asks for it without opening the device
+    // Answered before anything else: the TUI asks for it without opening the device.
+    // The saved settings become the action defaults, so the TUI reopens with them.
     if std::env::args().any(|a| a == manifest::MANIFEST_FLAG) {
-        println!("{}", manifest::JSON);
+        let chip = read_config_quiet().get_chip_config();
+        println!("{}", manifest::json(&chip));
         return;
     }
 
@@ -195,22 +200,27 @@ fn run(cli: &Cli, config: &Powmon) -> Result<(), Error> {
                 std::thread::sleep(std::time::Duration::from_millis((*interval_ms).max(10)));
             }
         }
-        Commands::Mode { save, .. } => {
+        Commands::Mode { no_save, .. } => {
             let mode = new_mode.expect("mode parsed above");
             let mut chip = config.get_chip_config();
             chip.mode = mode;
             config_hardware(&mut dev, address, chip)?;
             println!("Mode: {}", mode.name());
-            if *save {
-                save_mode(&mode)?;
+            if *no_save {
+                println!("(temporary; without --no-save it is kept in config.yaml)");
             } else {
-                println!("(temporary; use --save to keep it after this command)");
+                save("mode", mode.name())?;
             }
         }
-        Commands::Calibrate { max } => {
+        Commands::Calibrate { max, no_save } => {
             verify_hardware(&mut dev, address)?;
             let current_lsb = calibrate(&mut dev, address, *max)?;
             println!("Calibrated for {max} A (current LSB {current_lsb:.9} A)");
+            if *no_save {
+                println!("(temporary; without --no-save it is kept in config.yaml)");
+            } else {
+                save("maxcurrent", &max.to_string())?;
+            }
         }
         Commands::Reset => {
             reset(&mut dev, address)?;
@@ -221,98 +231,12 @@ fn run(cli: &Cli, config: &Powmon) -> Result<(), Error> {
 }
 
 /**
- * Persists the mode in the shared config.yaml by editing only the
- * `powmon:` -> `chip:` -> `mode:` line, keeping comments and formatting
+ * Persists a chip setting in the shared config.yaml and reports where it went.
+ * Called after the hardware accepted the change, so the file matches the chip
+ * when the command ends.
  */
-fn save_mode(mode: &InaMode) -> Result<(), Error> {
-    let Some(path) = std::env::var_os("IOCC_CONFIG") else {
-        return Err(Error::InvalidValue(
-            "IOCC_CONFIG not set, cannot save the mode".into(),
-        ));
-    };
-    let path = std::path::PathBuf::from(path);
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| Error::InvalidValue(format!("cannot read {}: {e}", path.display())))?;
-
-    let indent_of = |line: &str| line.len() - line.trim_start().len();
-    let mut lines: Vec<String> = text.lines().map(String::from).collect();
-    let mut in_powmon = false;
-    let mut chip_indent = None;
-    let mut updated = false;
-
-    for line in &mut lines {
-        let trimmed = line.trim_start();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let indent = indent_of(line);
-        if indent == 0 {
-            in_powmon = trimmed.starts_with("powmon:");
-            chip_indent = None;
-            continue;
-        }
-        if !in_powmon {
-            continue;
-        }
-        match chip_indent {
-            None => {
-                if trimmed.starts_with("chip:") {
-                    chip_indent = Some(indent);
-                }
-            }
-            Some(chip) if indent <= chip => chip_indent = None,
-            Some(_) if trimmed.starts_with("mode:") => {
-                let prefix = &line[..indent];
-                let comment = line
-                    .find('#')
-                    .map(|i| format!(" {}", &line[i..]))
-                    .unwrap_or_default();
-                *line = format!("{prefix}mode: {}{comment}", mode.name());
-                updated = true;
-                break;
-            }
-            Some(_) => {}
-        }
-    }
-
-    if !updated {
-        return Err(Error::InvalidValue(
-            "no powmon.chip.mode entry in config.yaml, mode not saved".into(),
-        ));
-    }
-    let mut content = lines.join("\n");
-    if text.ends_with('\n') {
-        content.push('\n');
-    }
-    std::fs::write(&path, content)
-        .map_err(|e| Error::InvalidValue(format!("cannot write {}: {e}", path.display())))?;
+fn save(key: &str, value: &str) -> Result<(), Error> {
+    let path = save_chip_entry(key, value).map_err(Error::InvalidValue)?;
     println!("Saved in {}", path.display());
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn saves_only_the_mode_line() {
-        let dir = std::env::temp_dir().join(format!("iocc-powmon-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("config.yaml");
-        std::fs::write(
-            &path,
-            "iocc:\n  verbose: true\npowmon:\n  chip:\n    # keep me\n    mode: BusVoltageContinuous # old\n    average: _16\nont:\n  port: a\n",
-        )
-        .unwrap();
-        // SAFETY: only this test touches IOCC_CONFIG
-        unsafe { std::env::set_var("IOCC_CONFIG", &path) };
-        save_mode(&InaMode::ShuntAndBusContinuous).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("mode: ShuntAndBusContinuous # old"));
-        assert!(
-            text.contains("# keep me") && text.contains("ont:") && text.contains("verbose: true")
-        );
-        unsafe { std::env::remove_var("IOCC_CONFIG") };
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 }
