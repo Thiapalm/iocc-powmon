@@ -17,7 +17,7 @@ pub fn json(chip: &Chipsetup) -> String {
         "views": [
             {"id": "live", "label": "Live readings", "kind": "metrics", "stream": true,
              "device": "shared", "command": ["watch", "--json", "--interval-ms", "200"]},
-            {"id": "graph", "label": "Current graph", "kind": "chart", "metric": "Current",
+            {"id": "graph", "label": "Signals graph", "kind": "chart", "metric": "Current",
              "stream": true, "device": "shared", "command": ["watch", "--json", "--interval-ms", "500"]},
             {"id": "status", "label": "Status", "kind": "table", "device": "shared",
              "refresh_ms": 5000, "command": ["status", "--json"]}
