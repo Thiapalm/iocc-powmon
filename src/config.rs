@@ -26,10 +26,12 @@ impl fmt::Display for HexU8 {
 
 #[derive(Debug, Deserialize)]
 struct RootConfig {
+    #[serde(default)]
     powmon: Powmon,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct Powmon {
     address: HexU8,
     verbose: bool,
@@ -47,13 +49,7 @@ impl Default for Powmon {
             i2c_speed_hz: 400_000,
             reset_on_open: false,
             timeout: 10,
-            chip: Chipsetup {
-                mode: InaMode::BusVoltageContinuous,
-                vbusct: InaVbusct::_1_1_ms,
-                vscht: InaVshct::_1_1_ms,
-                average: InaAverage::_16,
-                maxcurrent: 5.0,
-            },
+            chip: Chipsetup::new(),
         }
     }
 }
