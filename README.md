@@ -66,9 +66,11 @@ state, so the watches pause while they run and restart afterwards.
 2. Select another plugin and run a shared action: the powmon panel stays live in the *Watches* column.
 3. `P` unpins everything.
 
-Pinning keeps one panel per plugin (powmon's streaming *Live readings*), so pin another plugin's panel
-to watch two signals at once. [`examples/iocc-wave`](../iocc/examples/iocc-wave) shows the same flow
-without hardware.
+Pinning is per panel: selecting `powmon` starts on **Live readings**, but `[`/`]` switches to
+**Status** and `p` pins either (or both). The selected watch can be removed with `x`, all with `P`,
+and `PageUp`/`PageDown` scrolls the column when it does not fit. Press `g` to record the pinned
+metrics (current included) to CSV. [`examples/iocc-wave`](../iocc/examples/iocc-wave) shows the same
+flow without hardware.
 
 ### Command line and the broker
 
@@ -84,8 +86,17 @@ IOCC_SOCKET=/run/user/1000/iocc.sock iocc powmon watch --json
 ```
 
 The TUI socket is `$XDG_RUNTIME_DIR/iocc.sock` unless it was started with another `IOCC_SOCKET`. This
-only works for plugins that implement the protocol (powmon does); the native `iocc scan`/`read`/`write`
-commands always open the device directly.
+only works for plugins that implement the protocol (powmon does).
+
+The native commands have an explicit opt-in for the same broker:
+
+```sh
+iocc --via-tui scan
+iocc --via-tui read -a 4A -r 02 -e 2
+```
+
+Without `--via-tui` they keep opening the device directly, and `--via-tui` is rejected for plugins
+(use `IOCC_SOCKET` as shown above).
 
 ## Notes
 
