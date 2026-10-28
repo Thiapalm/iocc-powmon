@@ -110,6 +110,13 @@ mod tests {
         );
         assert_eq!(value["actions"][1]["args"][0]["default"], "2");
         assert_eq!(value["version"], env!("CARGO_PKG_VERSION"));
+
+        // Changing a setting from the TUI must persist it, so the actions never
+        // pass --no-save (the next manifest prompt reads the saved values back).
+        for index in [0, 1] {
+            let command = value["actions"][index]["command"].as_array().unwrap();
+            assert!(!command.iter().any(|arg| arg == "--no-save"), "{command:?}");
+        }
     }
 
     #[test]

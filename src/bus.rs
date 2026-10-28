@@ -2,10 +2,11 @@ use crate::comm::{read_device, start_device, write_device};
 use crate::tools::Error;
 
 /**
- * I2C access used by the plugin. When the iocc TUI sets IOCC_SOCKET, all
- * transactions go through the TUI broker, which owns the MCP2221. That allows
- * monitoring to keep running while another plugin uses the same bus.
- * Without IOCC_SOCKET the plugin opens the device itself, as before.
+ * I2C access used by the plugin. When iocc sets IOCC_SOCKET (a running TUI, or
+ * a command-line run that found one) all transactions go through the broker,
+ * which owns the MCP2221. That allows monitoring to keep running while another
+ * plugin uses the same bus. Without IOCC_SOCKET the plugin opens the device
+ * itself, as before.
  */
 pub enum Bus {
     Local(mcp2221::Handle),

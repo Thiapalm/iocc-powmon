@@ -34,6 +34,11 @@ Install `iocc` first. The script puts the plugin next to the `iocc` found in `PA
 ./install.sh --uninstall
 ```
 
+The installer also merges the `powmon:` section of this repository's `config.yaml` into the shared
+`config.yaml` (`iocc config import`), keeping the sections that already exist (`powmon:` is part of
+the iocc template, so usually nothing changes). Use `iocc config import --force config.yaml` to
+replace an existing section with the defaults.
+
 ## Commands
 
 | Command | Output |
@@ -113,29 +118,27 @@ it does not fit. Press `g` to record the pinned metrics (current included) to CS
 
 ### Command line and the broker
 
-Command line use is unchanged: iocc does not set `IOCC_SOCKET` for `iocc powmon ...`, so `status`,
-`read`, `mode`, `calibrate`, `reset` and `watch` keep opening the MCP2221 directly, with the same
-output, errors and exit codes as before. `watch` is the only addition.
-
-If you want the command line to read through an already running TUI, export the socket yourself:
+When a TUI is running, `iocc powmon ...` receives `IOCC_SOCKET` automatically and sends `status`,
+`read`, `mode`, `calibrate`, `reset` and `watch` through its broker, so the command line shares the
+MCP2221 with the panels instead of failing with "resource busy":
 
 ```sh
-IOCC_SOCKET=/run/user/1000/iocc.sock iocc powmon read --json
-IOCC_SOCKET=/run/user/1000/iocc.sock iocc powmon watch --json
+iocc powmon read --json
+iocc powmon watch --json
 ```
 
-The TUI socket is `$XDG_RUNTIME_DIR/iocc.sock` unless it was started with another `IOCC_SOCKET`. This
-only works for plugins that implement the protocol (powmon does).
+Use `--direct` to open the device itself (the plugin receives no `IOCC_SOCKET`, even if the shell
+exports one) or `--broker`/`--via-tui` to require a running broker. The socket is
+`$XDG_RUNTIME_DIR/iocc.sock` unless the TUI was started with another `IOCC_SOCKET`.
 
-The native commands have an explicit opt-in for the same broker:
+The native commands follow the same rule:
 
 ```sh
-iocc --via-tui scan
-iocc --via-tui read -a 4A -r 02 -e 2
+iocc scan
+iocc read -a 4A -r 02 -e 2
+iocc --direct scan   # ignore a running TUI
+iocc --broker scan   # fail when no TUI is running
 ```
-
-Without `--via-tui` they keep opening the device directly, and `--via-tui` is rejected for plugins
-(use `IOCC_SOCKET` as shown above).
 
 ## Notes
 
@@ -147,13 +150,13 @@ Without `--via-tui` they keep opening the device directly, and `--via-tui` is re
   `config.yaml` by hand. Changing the values from the commands above or from the TUI already restarts
   the TUI panels and is saved for the next run.
 - `watch` is the streaming form used by the TUI. It reads directly when `IOCC_SOCKET` is unset and
-  through the TUI broker when the TUI sets it.
+  through the broker whenever iocc provides one (a running TUI, detected from the command line too).
 
 ### Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
-| `USB error: Resource busy` | another process holds the MCP2221 (a running TUI, or another `iocc powmon`). Close it, or point `IOCC_SOCKET` at the running TUI as shown above. |
+| `USB error: Resource busy` | another process holds the MCP2221 (a running TUI, or another `iocc powmon`). Close it, or use the running TUI: iocc finds its broker automatically. |
 | `cannot connect to the iocc TUI broker at ...` | `IOCC_SOCKET` is set but stale. Unset it to read the device directly. |
 | `device in exclusive use by a plugin` | an exclusive view/action is using the chip in the TUI; wait for it to finish. |
 | The TUI panel stops with `command exited` | `watch` ended (the device was unplugged or a communication error occurred). Press `R` in the TUI to restart it. |
