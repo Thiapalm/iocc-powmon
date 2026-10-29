@@ -1,16 +1,21 @@
 use std::fmt::Display;
 
 ///Valid error codes
-#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Error {
     CommunicationErr,
-    InvalidParameter,
     InvalidDie,
     InvalidManufacturer,
-    MissingAddress,
-    MissingI2C,
+    InvalidValue(String),
 }
+
+impl From<mcp2221::Error> for Error {
+    fn from(_: mcp2221::Error) -> Self {
+        Error::CommunicationErr
+    }
+}
+
+impl std::error::Error for Error {}
 
 impl Display for Error {
     #[inline]
@@ -19,9 +24,7 @@ impl Display for Error {
             Error::InvalidDie => write!(f, "Invalid Die Number"),
             Error::CommunicationErr => write!(f, "Not found on address"),
             Error::InvalidManufacturer => write!(f, "Invalid Manufacturer"),
-            Error::InvalidParameter => write!(f, "Invalid Parameter"),
-            Error::MissingAddress => write!(f, "Missing Device Address"),
-            Error::MissingI2C => write!(f, "Missing I2C Bus"),
+            Error::InvalidValue(msg) => write!(f, "{msg}"),
         }
     }
 }
